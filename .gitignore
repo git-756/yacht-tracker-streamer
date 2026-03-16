@@ -1,0 +1,51 @@
+# =========================
+# 1. セキュリティ関連（最重要）
+# =========================
+# 秘密鍵や証明書は絶対にGitにコミットしない！
+certs/*.key
+certs/*.crt
+
+# =========================
+# 2. Node.js 関連 (pos-server)
+# =========================
+# npm installで自動生成される巨大なライブラリ群（OS依存）
+pos-server/node_modules/
+
+# 実行中に書き換わる動的なデータファイル（コンフリクトの原因になります）
+pos-server/checklist_data.json
+
+# =========================
+# 3. Python 関連 
+# =========================
+# gopro-server/.gitignoreで設定
+
+# =========================
+# 4. アプリケーションの出力ファイル
+# =========================
+# 画面からダウンロードした現在地のCSVファイル
+*.csv
+
+# =========================
+# 5. OSのシステムファイル (Windows & Ubuntu/Linux)
+# =========================
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.cab
+*.lnk
+desktop.ini
+$RECYCLE.BIN/
+
+# Ubuntu / Linux
+.Trash-*
+*~
+.fuse_hidden*
+.directory
+.nfs*
+
+# macOS 
+.DS_Store
+.AppleDouble
+.LSOverride

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>洋上発電試験システム ポータル</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 40px 20px; background-color: #f4f7f6; color: #333; }
+        h1 { margin-bottom: 40px; color: #2c3e50; }
+        .menu-container { display: flex; flex-direction: column; align-items: center; gap: 20px; }
+        .btn { 
+            display: block; width: 100%; max-width: 350px; padding: 25px; 
+            font-size: 20px; font-weight: bold; color: white; text-decoration: none; 
+            border-radius: 12px; box-shadow: 0 6px 10px rgba(0,0,0,0.15); 
+            transition: transform 0.2s, box-shadow 0.2s; 
+        }
+        .btn:hover { transform: translateY(-3px); box-shadow: 0 8px 15px rgba(0,0,0,0.2); }
+        .btn-video { background-color: #e74c3c; }
+        .btn-pos { background-color: #27ae60; }
+    </style>
+</head>
+<body>
+    <h1>洋上発電試験システム<br>統合ポータル</h1>
+    <div class="menu-container">
+        <a href="#" id="link-video" class="btn btn-video">📹 映像モニタリング (GoPro)</a>
+        <a href="pos-get.html" class="btn btn-pos">📍 現在地記録・座標同期</a>
+    </div>
+    <script>
+        // 映像配信(Flask: 5000番ポート)へのURLを自動生成
+        const currentHost = window.location.hostname;
+        document.getElementById('link-video').href = `https://${currentHost}:5000/`;
+    </script>
+</body>
+</html>
