@@ -11,9 +11,6 @@ certs/*.crt
 # npm installで自動生成される巨大なライブラリ群（OS依存）
 pos-server/node_modules/
 
-# 実行中に書き換わる動的なデータファイル（コンフリクトの原因になります）
-pos-server/checklist_data.json
-
 # =========================
 # 3. Python 関連 
 # =========================

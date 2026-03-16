@@ -6,8 +6,41 @@
     <title>Polaris Monitoring from Tug</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script async src="{{ url_for('static', filename='js/opencv.js') }}" onload="onOpenCvReady();" type="text/javascript"></script>
+    <style>
+        /* 戻るボタン用のスタイル */
+        .back-btn-container {
+            text-align: left;
+            margin-bottom: 15px;
+        }
+        .back-btn {
+            display: inline-block;
+            text-decoration: none;
+            font-size: 14px;
+            background-color: #6c757d;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 5px;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+        .back-btn:hover {
+            background-color: #5a6268;
+            color: white;
+        }
+    </style>
 </head>
 <body>
+
+    <div class="back-btn-container">
+        <a href="#" id="back-to-portal" class="back-btn">⬅ TOP</a>
+    </div>
+    
+    <script>
+        // アクセス中のIPアドレスを取得し、ポート3000のポータルURLを自動生成してセットする
+        const currentHost = window.location.hostname;
+        document.getElementById('back-to-portal').href = `https://${currentHost}:3000/portal.html`;
+    </script>
+
     <h2>Polaris Monitoring from Tug</h2>
     
     <div class="controls">

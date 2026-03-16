@@ -41,7 +41,13 @@
     </style>
 </head>
 <body>
-
+    <div style="margin-bottom: 15px; text-align: left;">
+            <a href="#" id="back-to-portal" style="display: inline-block; text-decoration: none; font-size: 14px; background-color: #6c757d; color: white; padding: 8px 15px; border-radius: 5px; font-weight: bold;">⬅ TOP</a>
+        </div>
+        <script>
+            // ポート3000のポータルURLを自動生成してリンク先に設定
+            document.getElementById('back-to-portal').href = `https://${window.location.hostname}:3000/portal.html`;
+        </script>
     <div id="role-modal">
         <div class="modal-content">
             <h2>参加モードを選択</h2>
@@ -94,7 +100,7 @@
     </div>
 
     <div class="disclaimer">
-        <strong>※注意事項（社内利用について）</strong><br>
+        <strong>※注意事項（利用について）</strong><br>
         本ツールは係留レス洋上発電業務の試験用ツールです。取得した位置情報は本画面での座標記録目的のみに使用され、バックグラウンドでの監視等は行いません。関係者以外の利用はお控えください。（CPV13）
     </div>
 

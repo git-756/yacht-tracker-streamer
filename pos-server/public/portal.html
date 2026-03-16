@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>洋上発電試験システム ポータル</title>
+    <title>モニタリング＆座標記録　ポータル</title>
     <style>
         body { font-family: sans-serif; text-align: center; padding: 40px 20px; background-color: #f4f7f6; color: #333; }
         h1 { margin-bottom: 40px; color: #2c3e50; }
@@ -20,13 +20,12 @@
     </style>
 </head>
 <body>
-    <h1>洋上発電試験システム<br>統合ポータル</h1>
+    <h1>モニタリング＆座標記録<br>統合ポータル</h1>
     <div class="menu-container">
-        <a href="#" id="link-video" class="btn btn-video">📹 映像モニタリング (GoPro)</a>
-        <a href="pos-get.html" class="btn btn-pos">📍 現在地記録・座標同期</a>
+        <a href="#" id="link-video" class="btn btn-video" target="_blank">📹 映像モニタリング (GoPro)</a>
+        <a href="pos-get.html" class="btn btn-pos" target="_blank">📍 現在地記録・座標同期</a>
     </div>
     <script>
-        // 映像配信(Flask: 5000番ポート)へのURLを自動生成
         const currentHost = window.location.hostname;
         document.getElementById('link-video').href = `https://${currentHost}:5000/`;
     </script>
