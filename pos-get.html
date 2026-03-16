@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>現在地記録アプリ（リアルタイム同期版）</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+    
+    <style>
+        /* 既存のスタイル */
+        body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; }
+        .status-box { background-color: #f0f0f0; padding: 10px; margin-bottom: 20px; border-radius: 5px; }
+        #map { height: 300px; width: 100%; margin-bottom: 20px; border-radius: 5px; border: 1px solid #ccc; z-index: 1; }
+        .input-group { display: flex; align-items: center; margin-bottom: 15px; }
+        .record-btn { padding: 10px 15px; font-size: 14px; cursor: pointer; margin-right: 10px; background-color: #007bff; color: white; border: none; border-radius: 5px; white-space: nowrap; }
+        .record-btn:hover { background-color: #0056b3; }
+        .record-btn:disabled { background-color: #ccc; cursor: not-allowed; } /* 無効時のスタイル */
+        input[type="text"] { flex-grow: 1; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; background-color: #fafafa; margin-right: 10px; transition: background-color 0.5s; }
+        .copy-btn { padding: 10px 15px; font-size: 14px; cursor: pointer; background-color: #6c757d; color: white; border: none; border-radius: 5px; }
+        .copy-btn:hover { background-color: #5a6268; }
+        .action-container { display: flex; justify-content: space-between; margin-bottom: 20px; padding-top: 20px; border-top: 1px solid #ccc; }
+        .save-btn { padding: 10px 15px; background-color: #28a745; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .load-btn { padding: 10px 15px; background-color: #17a2b8; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .disclaimer { background-color: #fff3cd; color: #856404; padding: 12px; border: 1px solid #ffeeba; border-radius: 5px; margin-top: 30px; margin-bottom: 20px; font-size: 0.9em; }
+        
+        /* ポップアップ（モーダル）のスタイル */
+        #role-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6); z-index: 9999;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .modal-content {
+            background: white; padding: 30px; border-radius: 10px; text-align: center; max-width: 400px;
+        }
+        .role-btn {
+            display: block; width: 100%; padding: 15px; margin: 15px 0; font-size: 18px; color: white; border: none; border-radius: 5px; cursor: pointer;
+        }
+        .role-op { background-color: #dc3545; }
+        .role-vw { background-color: #007bff; }
+    </style>
+</head>
+<body>
+
+    <div id="role-modal">
+        <div class="modal-content">
+            <h2>参加モードを選択</h2>
+            <p>※操作者は現在地の記録・更新が可能です。<br>閲覧者はリアルタイムでの状況確認とデータの保存が行えます。</p>
+            <button class="role-btn role-op" onclick="selectRole('operator')">🛠️ 操作者として参加</button>
+            <button class="role-btn role-vw" onclick="selectRole('viewer')">👀 閲覧者として参加</button>
+        </div>
+    </div>
+
+    <h2>現在地の記録 <span id="current-role-disp" style="font-size: 0.6em; color: gray;"></span></h2>
+    
+    <div class="status-box">
+        <strong>現在のステータス:</strong> <span id="status">位置情報を取得中...</span><br>
+        <small>リアルタイム座標: <span id="current-coords">--</span></small>
+    </div>
+
+    <input type="file" id="csv-input" accept=".csv" style="display: none;" onchange="loadFromCSV(event)">
+    <div style="margin-bottom: 15px;">
+        <button class="load-btn" onclick="document.getElementById('csv-input').click()">📁 記録済み位置情報を開く</button>
+    </div>
+
+    <div id="map"></div>
+
+    <div class="input-group">
+        <button class="record-btn" onclick="recordLocation('v1')">V1</button>
+        <input type="text" id="v1-input" readonly placeholder="V1の座標">
+        <button class="copy-btn" onclick="copyToClipboard('v1-input')">コピー</button>
+    </div>
+
+    <div class="input-group">
+        <button class="record-btn" onclick="recordLocation('v2')">V2</button>
+        <input type="text" id="v2-input" readonly placeholder="V2の座標">
+        <button class="copy-btn" onclick="copyToClipboard('v2-input')">コピー</button>
+    </div>
+
+    <div class="input-group">
+        <button class="record-btn" onclick="recordLocation('v3')">V3</button>
+        <input type="text" id="v3-input" readonly placeholder="V3の座標">
+        <button class="copy-btn" onclick="copyToClipboard('v3-input')">コピー</button>
+    </div>
+
+    <div class="input-group">
+        <button class="record-btn" onclick="recordLocation('v4')">V4</button>
+        <input type="text" id="v4-input" readonly placeholder="V4の座標">
+        <button class="copy-btn" onclick="copyToClipboard('v4-input')">コピー</button>
+    </div>
+
+    <div class="action-container">
+        <button class="save-btn" onclick="saveToCSV()">💾 確定 (CSV保存)</button>
+    </div>
+
+    <div class="disclaimer">
+        <strong>※注意事項（社内利用について）</strong><br>
+        本ツールは係留レス洋上発電業務の試験用ツールです。取得した位置情報は本画面での座標記録目的のみに使用され、バックグラウンドでの監視等は行いません。関係者以外の利用はお控えください。（CPV13）
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    
+    <script src="/socket.io/socket.io.js"></script>
+
+    <script>
+        // --- 権限管理とSocket.IO ---
+        let userRole = null; // 'operator' または 'viewer'
+        const socket = io(); // サーバーとリアルタイム接続を開始
+
+        function selectRole(role) {
+            userRole = role;
+            document.getElementById('role-modal').style.display = 'none'; // ポップアップを消す
+            document.getElementById('current-role-disp').innerText = role === 'operator' ? '[操作者モード]' : '[閲覧者モード]';
+
+            // 閲覧者の場合は、座標取得ボタンを無効化する
+            if (role === 'viewer') {
+                const btns = document.querySelectorAll('.record-btn');
+                btns.forEach(btn => {
+                    btn.disabled = true;
+                    btn.innerText = '操作不可';
+                });
+            }
+        }
+
+        // ★受信: サーバーから最新データを受け取った時（接続直後や、他の人が更新した時）
+        socket.on('init_coords', (data) => updateFieldsFromSocket(data));
+        socket.on('coords_updated', (data) => {
+            const tempObj = {};
+            tempObj[data.targetId] = data.coords;
+            updateFieldsFromSocket(tempObj);
+        });
+
+        function updateFieldsFromSocket(data) {
+            for (const [key, val] of Object.entries(data)) {
+                if (val) {
+                    const inputField = document.getElementById(`${key}-input`);
+                    if (inputField && inputField.value !== val) {
+                        inputField.value = val;
+                        // 更新されたことが視覚的にわかるように一瞬背景色を変える
+                        inputField.style.backgroundColor = '#d4edda';
+                        setTimeout(() => { inputField.style.backgroundColor = '#fafafa'; }, 1000);
+                    }
+                }
+            }
+        }
+
+        // --- 地図とGPSの処理（既存とほぼ同じ） ---
+        let currentLat = null;
+        let currentLng = null;
+        const statusEl = document.getElementById('status');
+        const coordsEl = document.getElementById('current-coords');
+
+        const map = L.map('map').setView([35.6895, 139.6917], 5); 
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+
+        let currentMarker = null;
+        let loadedMarkersLayer = L.layerGroup().addTo(map);
+
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(
+                (position) => {
+                    currentLat = position.coords.latitude;
+                    currentLng = position.coords.longitude;
+                    statusEl.innerText = "取得完了（更新中）";
+                    statusEl.style.color = "green";
+                    coordsEl.innerText = `${currentLat.toFixed(6)}, ${currentLng.toFixed(6)}`;
+                    
+                    const newLatLng = [currentLat, currentLng];
+                    if (currentMarker) {
+                        currentMarker.setLatLng(newLatLng);
+                    } else {
+                        currentMarker = L.marker(newLatLng).addTo(map).bindPopup('現在地').openPopup();
+                        map.setView(newLatLng, 15);
+                    }
+                },
+                (error) => {
+                    statusEl.innerText = `エラー: ${error.message}`;
+                    statusEl.style.color = "red";
+                },
+                { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+            );
+        }
+
+        // --- ボタンアクション ---
+        function recordLocation(targetId) {
+            // 操作者以外は処理を弾く
+            if (userRole !== 'operator') return;
+
+            if (currentLat !== null && currentLng !== null) {
+                const inputField = document.getElementById(`${targetId}-input`);
+                const coordsStr = `${currentLat}, ${currentLng}`;
+                inputField.value = coordsStr;
+
+                // ★送信: サーバーに「自分が座標を更新した」と伝える
+                socket.emit('update_coords', { targetId: targetId, coords: coordsStr });
+
+            } else {
+                alert("現在地をまだ取得できていません。少し待ってから再度お試しください。");
+            }
+        }
+
+        function copyToClipboard(inputId) {
+            const copyText = document.getElementById(inputId).value;
+            if (!copyText) return alert("コピーする座標がありません。");
+            navigator.clipboard.writeText(copyText).then(() => alert("コピーしました: " + copyText)).catch(err => console.error(err));
+        }
+
+        function saveToCSV() {
+            const vals = ['v1', 'v2', 'v3', 'v4'].map(id => document.getElementById(`${id}-input`).value);
+            let csvContent = "Point,Latitude,Longitude\n";
+            vals.forEach((val, i) => {
+                const name = `V${i+1}`;
+                if (val) {
+                    const parts = val.split(', ');
+                    csvContent += `${name},${parts[0]},${parts[1]}\n`;
+                } else {
+                    csvContent += `${name},,\n`;
+                }
+            });
+            const now = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            const datetimeStr = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `${datetimeStr}_V-pos.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function loadFromCSV(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => processCSV(e.target.result);
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+
+        function processCSV(csvText) {
+            loadedMarkersLayer.clearLayers();
+            const lines = csvText.split('\n');
+            let bounds = [];
+            for (let i = 1; i < lines.length; i++) {
+                if (!lines[i].trim()) continue;
+                const parts = lines[i].split(',');
+                if (parts.length >= 3) {
+                    const pointName = parts[0].trim();
+                    const lat = parseFloat(parts[1].trim());
+                    const lng = parseFloat(parts[2].trim());
+                    if (!isNaN(lat) && !isNaN(lng)) {
+                        const inputEl = document.getElementById(`${pointName.toLowerCase()}-input`);
+                        if (inputEl) inputEl.value = `${lat}, ${lng}`;
+                        const marker = L.marker([lat, lng]).bindPopup(`<b>記録済み: ${pointName}</b>`);
+                        loadedMarkersLayer.addLayer(marker);
+                        bounds.push([lat, lng]);
+                    }
+                }
+            }
+            if (bounds.length > 1) map.fitBounds(bounds);
+            else if (bounds.length === 1) map.setView(bounds[0], 15);
+        }
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polaris Monitoring from Tug</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script async src="{{ url_for('static', filename='js/opencv.js') }}" onload="onOpenCvReady();" type="text/javascript"></script>
+</head>
+<body>
+    <h2>Polaris Monitoring from Tug</h2>
+    
+    <div class="controls">
+        <button id="toggleBtn" class="btn-on">手振れ補正: ON</button>
+    </div>
+    
+    <div class="video-container">
+        <img id="rawVideo" src="/video_feed" style="position: absolute; opacity: 0; pointer-events: none;">
+        
+        <canvas id="outputCanvas" width="1280" height="720"></canvas>
+    </div>
+
+    <div id="status">OpenCV.js を初期化中（WebAssembly展開中）...</div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
