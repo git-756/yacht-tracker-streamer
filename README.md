@@ -21,6 +21,7 @@
   - ブラウザ上(OpenCV.js)での映像のリアルタイム処理・手振れ補正機能
 
 ## ディレクトリ構成
+```text
 yacht-tracker-streamer/
 ├── certs/                 # SSL証明書と秘密鍵を配置するディレクトリ
 ├── gopro-server/          # 映像配信サーバー (Python)
@@ -29,6 +30,7 @@ yacht-tracker-streamer/
 ├── README.md              # 本ファイル
 ├── NOTICE.md              # サードパーティライセンス表記
 └── LICENSE                # MITライセンス
+```
 
 ## セットアップ手順
 1. SSL証明書の作成 (HTTPS化)
