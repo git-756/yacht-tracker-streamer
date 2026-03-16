@@ -8,50 +8,53 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
     
     <style>
-        /* 既存のスタイル */
         body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; }
         .status-box { background-color: #f0f0f0; padding: 10px; margin-bottom: 20px; border-radius: 5px; }
         #map { height: 300px; width: 100%; margin-bottom: 20px; border-radius: 5px; border: 1px solid #ccc; z-index: 1; }
         .input-group { display: flex; align-items: center; margin-bottom: 15px; }
         .record-btn { padding: 10px 15px; font-size: 14px; cursor: pointer; margin-right: 10px; background-color: #007bff; color: white; border: none; border-radius: 5px; white-space: nowrap; }
         .record-btn:hover { background-color: #0056b3; }
-        .record-btn:disabled { background-color: #ccc; cursor: not-allowed; } /* 無効時のスタイル */
+        .record-btn:disabled { background-color: #ccc; cursor: not-allowed; }
         input[type="text"] { flex-grow: 1; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; background-color: #fafafa; margin-right: 10px; transition: background-color 0.5s; }
         .copy-btn { padding: 10px 15px; font-size: 14px; cursor: pointer; background-color: #6c757d; color: white; border: none; border-radius: 5px; }
         .copy-btn:hover { background-color: #5a6268; }
         .action-container { display: flex; justify-content: space-between; margin-bottom: 20px; padding-top: 20px; border-top: 1px solid #ccc; }
         .save-btn { padding: 10px 15px; background-color: #28a745; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .save-btn:hover { background-color: #218838; }
+        
+        /* ★追加: リセットボタンのスタイル */
+        .reset-btn { padding: 10px 15px; background-color: #dc3545; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .reset-btn:hover { background-color: #c82333; }
+        .reset-btn:disabled { background-color: #ccc; cursor: not-allowed; }
+
         .load-btn { padding: 10px 15px; background-color: #17a2b8; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .load-btn:hover { background-color: #138496; }
         .disclaimer { background-color: #fff3cd; color: #856404; padding: 12px; border: 1px solid #ffeeba; border-radius: 5px; margin-top: 30px; margin-bottom: 20px; font-size: 0.9em; }
         
-        /* ポップアップ（モーダル）のスタイル */
         #role-modal {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.6); z-index: 9999;
             display: flex; justify-content: center; align-items: center;
         }
-        .modal-content {
-            background: white; padding: 30px; border-radius: 10px; text-align: center; max-width: 400px;
-        }
-        .role-btn {
-            display: block; width: 100%; padding: 15px; margin: 15px 0; font-size: 18px; color: white; border: none; border-radius: 5px; cursor: pointer;
-        }
+        .modal-content { background: white; padding: 30px; border-radius: 10px; text-align: center; max-width: 400px; }
+        .role-btn { display: block; width: 100%; padding: 15px; margin: 15px 0; font-size: 18px; color: white; border: none; border-radius: 5px; cursor: pointer; }
         .role-op { background-color: #dc3545; }
         .role-vw { background-color: #007bff; }
     </style>
 </head>
 <body>
+
     <div style="margin-bottom: 15px; text-align: left;">
-            <a href="#" id="back-to-portal" style="display: inline-block; text-decoration: none; font-size: 14px; background-color: #6c757d; color: white; padding: 8px 15px; border-radius: 5px; font-weight: bold;">⬅ TOP</a>
-        </div>
-        <script>
-            // ポート3000のポータルURLを自動生成してリンク先に設定
-            document.getElementById('back-to-portal').href = `https://${window.location.hostname}:3000/portal.html`;
-        </script>
+        <a href="#" id="back-to-portal" style="display: inline-block; text-decoration: none; font-size: 14px; background-color: #6c757d; color: white; padding: 8px 15px; border-radius: 5px; font-weight: bold;">⬅ TOP</a>
+    </div>
+    <script>
+        document.getElementById('back-to-portal').href = `https://${window.location.hostname}:3000/portal.html`;
+    </script>
+
     <div id="role-modal">
         <div class="modal-content">
             <h2>参加モードを選択</h2>
-            <p>※操作者は現在地の記録・更新が可能です。<br>閲覧者はリアルタイムでの状況確認とデータの保存が行えます。</p>
+            <p>※操作者は現在地の記録・更新・リセットが可能です。<br>閲覧者はリアルタイムでの状況確認とデータの保存が行えます。</p>
             <button class="role-btn role-op" onclick="selectRole('operator')">🛠️ 操作者として参加</button>
             <button class="role-btn role-vw" onclick="selectRole('viewer')">👀 閲覧者として参加</button>
         </div>
@@ -97,6 +100,7 @@
 
     <div class="action-container">
         <button class="save-btn" onclick="saveToCSV()">💾 確定 (CSV保存)</button>
+        <button class="reset-btn" id="reset-btn" onclick="resetData()">🗑️ リセット</button>
     </div>
 
     <div class="disclaimer">
@@ -105,30 +109,33 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-    
     <script src="/socket.io/socket.io.js"></script>
 
     <script>
-        // --- 権限管理とSocket.IO ---
-        let userRole = null; // 'operator' または 'viewer'
-        const socket = io(); // サーバーとリアルタイム接続を開始
+        let userRole = null; 
+        const socket = io(); 
 
         function selectRole(role) {
             userRole = role;
-            document.getElementById('role-modal').style.display = 'none'; // ポップアップを消す
+            document.getElementById('role-modal').style.display = 'none'; 
             document.getElementById('current-role-disp').innerText = role === 'operator' ? '[操作者モード]' : '[閲覧者モード]';
 
-            // 閲覧者の場合は、座標取得ボタンを無効化する
             if (role === 'viewer') {
                 const btns = document.querySelectorAll('.record-btn');
                 btns.forEach(btn => {
                     btn.disabled = true;
                     btn.innerText = '操作不可';
                 });
+                
+                // ★追加: 閲覧者はリセットボタンも操作不可にする
+                const resetBtn = document.getElementById('reset-btn');
+                if(resetBtn) {
+                    resetBtn.disabled = true;
+                    resetBtn.innerText = '操作不可';
+                }
             }
         }
 
-        // ★受信: サーバーから最新データを受け取った時（接続直後や、他の人が更新した時）
         socket.on('init_coords', (data) => updateFieldsFromSocket(data));
         socket.on('coords_updated', (data) => {
             const tempObj = {};
@@ -136,13 +143,18 @@
             updateFieldsFromSocket(tempObj);
         });
 
+        // ★追加: サーバーから「リセット」の指示を受けたときの処理
+        socket.on('coords_reset', () => {
+            clearScreen();
+            alert("操作者により座標データがリセットされました。");
+        });
+
         function updateFieldsFromSocket(data) {
             for (const [key, val] of Object.entries(data)) {
-                if (val) {
+                if (val !== undefined && val !== "") {
                     const inputField = document.getElementById(`${key}-input`);
                     if (inputField && inputField.value !== val) {
                         inputField.value = val;
-                        // 更新されたことが視覚的にわかるように一瞬背景色を変える
                         inputField.style.backgroundColor = '#d4edda';
                         setTimeout(() => { inputField.style.backgroundColor = '#fafafa'; }, 1000);
                     }
@@ -150,7 +162,36 @@
             }
         }
 
-        // --- 地図とGPSの処理（既存とほぼ同じ） ---
+        // ★追加: リセットボタンが押されたときの処理
+        function resetData() {
+            if (userRole !== 'operator') return;
+
+            // ポップアップで最終確認
+            const isConfirmed = confirm("記録したV1〜V4の座標と地図のピンをすべてリセットしますか？\n（閲覧者の画面も同時にリセットされます）");
+            
+            if (isConfirmed) {
+                clearScreen(); // 自分の画面を消す
+                socket.emit('reset_coords'); // サーバーに「リセットしたよ」と伝える
+            }
+        }
+
+        // ★追加: 画面の入力欄とピンを消去する共通処理
+        function clearScreen() {
+            ['v1', 'v2', 'v3', 'v4'].forEach(id => {
+                const el = document.getElementById(`${id}-input`);
+                if (el) {
+                    el.value = '';
+                    // リセットされたことがわかるように一瞬赤っぽくする
+                    el.style.backgroundColor = '#f8d7da';
+                    setTimeout(() => { el.style.backgroundColor = '#fafafa'; }, 1000);
+                }
+            });
+            // 読み込んだ過去のピン（記録済みピン）も消去
+            if(loadedMarkersLayer) {
+                loadedMarkersLayer.clearLayers();
+            }
+        }
+
         let currentLat = null;
         let currentLng = null;
         const statusEl = document.getElementById('status');
@@ -187,9 +228,7 @@
             );
         }
 
-        // --- ボタンアクション ---
         function recordLocation(targetId) {
-            // 操作者以外は処理を弾く
             if (userRole !== 'operator') return;
 
             if (currentLat !== null && currentLng !== null) {
@@ -197,7 +236,6 @@
                 const coordsStr = `${currentLat}, ${currentLng}`;
                 inputField.value = coordsStr;
 
-                // ★送信: サーバーに「自分が座標を更新した」と伝える
                 socket.emit('update_coords', { targetId: targetId, coords: coordsStr });
 
             } else {
