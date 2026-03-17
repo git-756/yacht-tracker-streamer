@@ -22,7 +22,6 @@
         .save-btn { padding: 10px 15px; background-color: #28a745; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; }
         .save-btn:hover { background-color: #218838; }
         
-        /* ★追加: リセットボタンのスタイル */
         .reset-btn { padding: 10px 15px; background-color: #dc3545; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; }
         .reset-btn:hover { background-color: #c82333; }
         .reset-btn:disabled { background-color: #ccc; cursor: not-allowed; }
@@ -115,10 +114,21 @@
         let userRole = null; 
         const socket = io(); 
 
+        // ==========================================
+        // ★追加: テストモード設定 (0: オフ, 1: オン)
+        // ==========================================
+        const TEST_MODE = 1;
+
         function selectRole(role) {
             userRole = role;
             document.getElementById('role-modal').style.display = 'none'; 
-            document.getElementById('current-role-disp').innerText = role === 'operator' ? '[操作者モード]' : '[閲覧者モード]';
+            
+            let roleText = role === 'operator' ? '[操作者モード]' : '[閲覧者モード]';
+            // テストモードONの時はタイトルに赤文字で警告を出す
+            if (TEST_MODE === 1) {
+                roleText += ' <span style="color:red; font-weight:bold;">[TEST MODE]</span>';
+            }
+            document.getElementById('current-role-disp').innerHTML = roleText;
 
             if (role === 'viewer') {
                 const btns = document.querySelectorAll('.record-btn');
@@ -127,13 +137,38 @@
                     btn.innerText = '操作不可';
                 });
                 
-                // ★追加: 閲覧者はリセットボタンも操作不可にする
                 const resetBtn = document.getElementById('reset-btn');
                 if(resetBtn) {
                     resetBtn.disabled = true;
                     resetBtn.innerText = '操作不可';
                 }
+
+                // 閲覧者はテストモードであっても強制的に手動入力不可に戻す
+                ['v1', 'v2', 'v3', 'v4'].forEach(id => {
+                    const inputEl = document.getElementById(`${id}-input`);
+                    if(inputEl) inputEl.setAttribute('readonly', true);
+                });
             }
+        }
+
+        // ==========================================
+        // ★追加: テストモード時の手動入力許可イベント
+        // ==========================================
+        if (TEST_MODE === 1) {
+            ['v1', 'v2', 'v3', 'v4'].forEach(id => {
+                const inputEl = document.getElementById(`${id}-input`);
+                if (inputEl) {
+                    inputEl.removeAttribute('readonly'); // 手動入力を許可
+                    inputEl.placeholder = `${id.toUpperCase()}の座標 (手動入力可)`;
+                    
+                    // 手動で値を変更してエンターを押すか、別の場所をクリックした時に同期する
+                    inputEl.addEventListener('change', (e) => {
+                        if (userRole === 'operator') {
+                            socket.emit('update_coords', { targetId: id, coords: e.target.value });
+                        }
+                    });
+                }
+            });
         }
 
         socket.on('init_coords', (data) => updateFieldsFromSocket(data));
@@ -143,7 +178,6 @@
             updateFieldsFromSocket(tempObj);
         });
 
-        // ★追加: サーバーから「リセット」の指示を受けたときの処理
         socket.on('coords_reset', () => {
             clearScreen();
             alert("操作者により座標データがリセットされました。");
@@ -162,31 +196,26 @@
             }
         }
 
-        // ★追加: リセットボタンが押されたときの処理
         function resetData() {
             if (userRole !== 'operator') return;
 
-            // ポップアップで最終確認
             const isConfirmed = confirm("記録したV1〜V4の座標と地図のピンをすべてリセットしますか？\n（閲覧者の画面も同時にリセットされます）");
             
             if (isConfirmed) {
-                clearScreen(); // 自分の画面を消す
-                socket.emit('reset_coords'); // サーバーに「リセットしたよ」と伝える
+                clearScreen(); 
+                socket.emit('reset_coords'); 
             }
         }
 
-        // ★追加: 画面の入力欄とピンを消去する共通処理
         function clearScreen() {
             ['v1', 'v2', 'v3', 'v4'].forEach(id => {
                 const el = document.getElementById(`${id}-input`);
                 if (el) {
                     el.value = '';
-                    // リセットされたことがわかるように一瞬赤っぽくする
                     el.style.backgroundColor = '#f8d7da';
                     setTimeout(() => { el.style.backgroundColor = '#fafafa'; }, 1000);
                 }
             });
-            // 読み込んだ過去のピン（記録済みピン）も消去
             if(loadedMarkersLayer) {
                 loadedMarkersLayer.clearLayers();
             }
