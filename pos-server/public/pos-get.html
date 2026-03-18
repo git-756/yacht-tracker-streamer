@@ -66,9 +66,11 @@
         <small>リアルタイム座標: <span id="current-coords">--</span></small>
     </div>
 
-    <input type="file" id="csv-input" accept=".csv" style="display: none;" onchange="loadFromCSV(event)">
-    <div style="margin-bottom: 15px;">
-        <button class="load-btn" onclick="document.getElementById('csv-input').click()">📁 記録済み位置情報を開く</button>
+    <input type="file" id="csv-input-base" accept=".csv" style="display: none;" onchange="loadFromCSV(event, 'base')">
+    <input type="file" id="csv-input-check" accept=".csv" style="display: none;" onchange="loadFromCSV(event, 'check')">
+    <div style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+        <button class="load-btn" onclick="document.getElementById('csv-input-base').click()">📁 ベースCSV読込 (エリア枠線)</button>
+        <button class="load-btn" style="background-color: #ffc107; color: #333; font-weight: bold;" onclick="document.getElementById('csv-input-check').click()" onmouseover="this.style.backgroundColor='#e0a800'" onmouseout="this.style.backgroundColor='#ffc107'">🟡 確認用CSV読込 (黄色ピン)</button>
     </div>
 
     <div id="map"></div>
@@ -116,9 +118,18 @@
 
         const TEST_MODE = 1;
 
-        // ★追加: 読み込んだCSVのオリジナルデータを保持する変数
         let originalCsvLines = null;
         let originalCsvFileName = null;
+
+        // ★追加: 確認用ピンのカスタムアイコン（イエロー）
+        const yellowIcon = new L.Icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-yellow.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41]
+        });
 
         function selectRole(role) {
             userRole = role;
@@ -193,7 +204,6 @@
 
         function resetData() {
             if (userRole !== 'operator') return;
-
             const isConfirmed = confirm("記録したV1〜V4の座標と地図のピンをすべてリセットしますか？\n（閲覧者の画面も同時にリセットされます）");
             
             if (isConfirmed) {
@@ -211,9 +221,10 @@
                     setTimeout(() => { el.style.backgroundColor = '#fafafa'; }, 1000);
                 }
             });
-            if(loadedMarkersLayer) {
-                loadedMarkersLayer.clearLayers();
-            }
+            if(loadedMarkersLayer) loadedMarkersLayer.clearLayers();
+            if(checkMarkersLayer) checkMarkersLayer.clearLayers(); // 黄色ピンも消去
+            originalCsvLines = null;
+            originalCsvFileName = null;
         }
 
         let currentLat = null;
@@ -225,7 +236,8 @@
         L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
         let currentMarker = null;
-        let loadedMarkersLayer = L.layerGroup().addTo(map);
+        let loadedMarkersLayer = L.layerGroup().addTo(map); // ベース(青線)用レイヤー
+        let checkMarkersLayer = L.layerGroup().addTo(map);  // 確認用(黄色ピン)用レイヤー
 
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(
@@ -261,7 +273,6 @@
                 inputField.value = coordsStr;
 
                 socket.emit('update_coords', { targetId: targetId, coords: coordsStr });
-
             } else {
                 alert("現在地をまだ取得できていません。少し待ってから再度お試しください。");
             }
@@ -273,15 +284,11 @@
             navigator.clipboard.writeText(copyText).then(() => alert("コピーしました: " + copyText)).catch(err => console.error(err));
         }
 
-        // ==========================================
-        // ★変更: 確定(保存)ボタンの処理をテンプレート上書き方式に変更
-        // ==========================================
         function saveToCSV() {
             const vVals = ['v1', 'v2', 'v3', 'v4'].map(id => document.getElementById(`${id}-input`).value);
             let finalCsvContent = "";
             
             if (originalCsvLines && originalCsvLines.length > 0) {
-                // CSVテンプレートを読み込んでいる場合：way行を特定して書き換える
                 let newLines = [];
                 let wayIndex = 0;
                 
@@ -291,7 +298,6 @@
                     if (line.startsWith('way,')) {
                         if (wayIndex < 4) {
                             const val = vVals[wayIndex];
-                            // 元の行に含まれるカンマの数を維持する
                             const commaCount = (line.match(/,/g) || []).length;
                             const trailingCommas = ",".repeat(Math.max(0, commaCount - 2));
                             
@@ -299,7 +305,7 @@
                                 const coords = val.split(', ');
                                 line = `way,${coords[0]},${coords[1]}${trailingCommas}`;
                             } else {
-                                line = `way,,${trailingCommas}`; // 空欄で保存された場合
+                                line = `way,,${trailingCommas}`; 
                             }
                         }
                         wayIndex++;
@@ -308,7 +314,6 @@
                 }
                 finalCsvContent = newLines.join('\n');
             } else {
-                // テンプレートを読み込まずに開始した場合のフォールバック(標準保存)
                 finalCsvContent = "Point,Latitude,Longitude\n";
                 vVals.forEach((val, i) => {
                     const name = `V${i+1}`;
@@ -321,7 +326,6 @@
                 });
             }
 
-            // ファイル名指定のポップアップダイアログを表示
             const now = new Date();
             const pad = (n) => String(n).padStart(2, '0');
             const datetimeStr = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
@@ -329,7 +333,7 @@
             let defaultName = originalCsvFileName ? `updated_${originalCsvFileName}` : `${datetimeStr}_V-pos.csv`;
             const fileName = prompt("保存するファイル名を入力してください", defaultName);
             
-            if (!fileName) return; // キャンセルされた場合は保存しない
+            if (!fileName) return; 
             
             const finalFileName = fileName.endsWith('.csv') ? fileName : fileName + '.csv';
 
@@ -342,68 +346,72 @@
             document.body.removeChild(link);
         }
 
-        // ==========================================
-        // ★変更: ファイル読み込み・解析処理をテンプレート保持・edge描画に対応
-        // ==========================================
-        function loadFromCSV(event) {
+        // ★変更: 2種類の読み込みモードに対応
+        function loadFromCSV(event, mode) {
             const file = event.target.files[0];
             if (!file) return;
-            originalCsvFileName = file.name; // ファイル名を保持
+            
+            // ベース読み込みの時だけファイル名とテンプレ情報を記憶する
+            if (mode === 'base') {
+                originalCsvFileName = file.name; 
+            }
+            
             const reader = new FileReader();
-            reader.onload = (e) => processCSV(e.target.result);
+            reader.onload = (e) => processCSV(e.target.result, mode);
             reader.readAsText(file);
             event.target.value = '';
         }
 
-        function processCSV(csvText) {
-            loadedMarkersLayer.clearLayers();
-            
-            // 行ごとに分割してオリジナルデータとして保持（保存時に再利用するため）
-            originalCsvLines = csvText.split(/\r?\n/);
-            
-            let wayIndex = 1;
+        function processCSV(csvText, mode) {
+            const lines = csvText.split(/\r?\n/);
             let bounds = [];
-            let edgePoints = []; // おまけ機能：作業エリアの描画用
             
-            for (let i = 0; i < originalCsvLines.length; i++) {
-                const line = originalCsvLines[i].trim();
-                if (!line) continue;
+            if (mode === 'base') {
+                loadedMarkersLayer.clearLayers();
+                originalCsvLines = lines; // 保存テンプレ用に保持
+                let edgePoints = [];
                 
-                const parts = line.split(',');
-                
-                // edge（境界）の場合は青線の座標として記録
-                if (parts[0] === 'edge') {
-                    const lat = parseFloat(parts[1]);
-                    const lng = parseFloat(parts[2]);
-                    if (!isNaN(lat) && !isNaN(lng)) {
-                        edgePoints.push([lat, lng]);
-                        bounds.push([lat, lng]);
-                    }
-                } 
-                // wayの場合は出現順にV1〜V4へ割り当て
-                else if (parts[0] === 'way' && wayIndex <= 4) {
-                    const lat = parseFloat(parts[1]);
-                    const lng = parseFloat(parts[2]);
-                    if (!isNaN(lat) && !isNaN(lng)) {
-                        const inputEl = document.getElementById(`v${wayIndex}-input`);
-                        if (inputEl) {
-                            inputEl.value = `${lat}, ${lng}`;
-                            // Socket.ioで他の画面にも同期させる（操作者の場合）
-                            if (userRole === 'operator') {
-                                socket.emit('update_coords', { targetId: `v${wayIndex}`, coords: `${lat}, ${lng}` });
-                            }
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line) continue;
+                    const parts = line.split(',');
+                    
+                    if (parts[0] === 'edge') {
+                        const lat = parseFloat(parts[1]);
+                        const lng = parseFloat(parts[2]);
+                        if (!isNaN(lat) && !isNaN(lng)) {
+                            edgePoints.push([lat, lng]);
+                            bounds.push([lat, lng]);
                         }
-                        const marker = L.marker([lat, lng]).bindPopup(`<b>記録済み: V${wayIndex}</b>`);
-                        loadedMarkersLayer.addLayer(marker);
-                        bounds.push([lat, lng]);
                     }
-                    wayIndex++;
+                    // baseモードでは way 行を無視し、入力欄の上書きを行わない
                 }
-            }
-
-            // おまけ機能：edgeポイントが存在すれば、ポリライン（枠線）を描画する
-            if (edgePoints.length > 0) {
-                L.polyline(edgePoints, {color: '#007bff', weight: 3, opacity: 0.6}).addTo(loadedMarkersLayer);
+                
+                if (edgePoints.length > 0) {
+                    L.polyline(edgePoints, {color: '#007bff', weight: 3, opacity: 0.6}).addTo(loadedMarkersLayer);
+                }
+                
+            } else if (mode === 'check') {
+                checkMarkersLayer.clearLayers();
+                let wayIndex = 1;
+                
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line) continue;
+                    const parts = line.split(',');
+                    
+                    if (parts[0] === 'way' && wayIndex <= 4) {
+                        const lat = parseFloat(parts[1]);
+                        const lng = parseFloat(parts[2]);
+                        if (!isNaN(lat) && !isNaN(lng)) {
+                            // 地図上に黄色のピンを立てる（入力欄は上書きしない）
+                            const marker = L.marker([lat, lng], {icon: yellowIcon}).bindPopup(`<b>確認用: V${wayIndex}</b>`);
+                            checkMarkersLayer.addLayer(marker);
+                            bounds.push([lat, lng]);
+                        }
+                        wayIndex++;
+                    }
+                }
             }
 
             if (bounds.length > 1) map.fitBounds(bounds);
