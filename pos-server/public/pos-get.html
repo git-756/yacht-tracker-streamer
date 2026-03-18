@@ -52,10 +52,10 @@
         .role-op { background-color: #dc3545; }
         .role-vw { background-color: #007bff; }
         
-        .file-name-label { font-size: 0.75em; color: #666; margin-top: 5px; padding-left: 2px; }
+        .file-name-label { font-size: 0.8em; color: #666; margin-top: 5px; padding-left: 2px; flex-grow: 1; word-break: break-all; }
         
-        /* CSVエリアを視覚的にまとめるためのスタイル */
-        .csv-container { background-color: #f8f9fa; padding: 15px; border-radius: 5px; border: 1px solid #dee2e6; margin-bottom: 20px; display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+        .csv-container { background-color: #f8f9fa; padding: 15px; border-radius: 5px; border: 1px solid #dee2e6; margin-bottom: 20px; display: flex; gap: 15px; flex-wrap: wrap; }
+        .csv-box { background: white; padding: 10px; border-radius: 5px; border: 1px solid #ccc; flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 8px; }
     </style>
 </head>
 <body>
@@ -90,16 +90,20 @@
     <input type="file" id="csv-input-check" accept=".csv" style="display: none;" onchange="loadFromCSV(event, 'check')">
     
     <div class="csv-container">
-        <div style="display: flex; flex-direction: column;">
-            <button class="load-btn" onclick="document.getElementById('csv-input-base').click()">📁 ベースCSV読込 (青枠線)</button>
-            <div id="base-csv-name" class="file-name-label">未選択</div>
+        <div class="csv-box">
+            <button class="load-btn" style="width: 100%;" onclick="document.getElementById('csv-input-base').click()">📁 ベースCSV読込 (青枠線)</button>
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div id="base-csv-name" class="file-name-label">未選択</div>
+                <button class="reset-btn" id="base-reset-btn" onclick="resetSingleCsv('base')" style="padding: 5px 10px; font-size: 12px; margin-left: 10px; white-space: nowrap;">🗑️ クリア</button>
+            </div>
         </div>
-        <div style="display: flex; flex-direction: column;">
-            <button class="load-btn" style="background-color: #ffc107; color: #333; font-weight: bold;" onclick="document.getElementById('csv-input-check').click()" onmouseover="this.style.backgroundColor='#e0a800'" onmouseout="this.style.backgroundColor='#ffc107'">🟡 確認用CSV読込 (黄ピン)</button>
-            <div id="check-csv-name" class="file-name-label">未選択</div>
-        </div>
-        <div style="display: flex; flex-direction: column; justify-content: flex-start; margin-left: auto;">
-            <button class="reset-btn" id="csv-reset-btn" onclick="csvReset()" style="padding: 10px 15px; font-size: 14px;">🗑️ CSVクリア</button>
+
+        <div class="csv-box">
+            <button class="load-btn" style="width: 100%; background-color: #ffc107; color: #333; font-weight: bold;" onclick="document.getElementById('csv-input-check').click()" onmouseover="this.style.backgroundColor='#e0a800'" onmouseout="this.style.backgroundColor='#ffc107'">🟡 確認用CSV読込 (黄ピン)</button>
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div id="check-csv-name" class="file-name-label">未選択</div>
+                <button class="reset-btn" id="check-reset-btn" onclick="resetSingleCsv('check')" style="padding: 5px 10px; font-size: 12px; margin-left: 10px; white-space: nowrap;">🗑️ クリア</button>
+            </div>
         </div>
     </div>
 
@@ -257,7 +261,7 @@
             if (group) group.remove();
         }
 
-        // ★変更: 3つのリセットボタンを制御する
+        // ★変更: 個別のクリアボタンの権限制御を追加
         function selectRole(role) {
             userRole = role;
             document.getElementById('role-modal').style.display = 'none'; 
@@ -270,17 +274,16 @@
 
             document.getElementById('add-point-btn').style.display = (role === 'operator') ? 'block' : 'none';
 
-            // 閲覧者はすべてのリセットボタンを操作不可にする
-            ['full-reset-btn', 'csv-reset-btn', 'coord-reset-btn'].forEach(btnId => {
+            ['full-reset-btn', 'base-reset-btn', 'check-reset-btn', 'coord-reset-btn'].forEach(btnId => {
                 const btn = document.getElementById(btnId);
                 if (btn) {
                     if (role === 'viewer') {
                         btn.disabled = true;
-                        btn.innerText = '操作不可';
+                        if (btnId !== 'full-reset-btn') btn.innerText = '操作不可';
                     } else {
                         btn.disabled = false;
                         if (btnId === 'full-reset-btn') btn.innerHTML = '⚠️ 全リセット';
-                        if (btnId === 'csv-reset-btn') btn.innerHTML = '🗑️ CSVクリア';
+                        if (btnId === 'base-reset-btn' || btnId === 'check-reset-btn') btn.innerHTML = '🗑️ クリア';
                         if (btnId === 'coord-reset-btn') btn.innerHTML = '🗑️ 座標リセット';
                     }
                 }
@@ -315,7 +318,6 @@
             updateFieldsFromSocket(tempObj);
         });
 
-        // サーバーからの全リセット通知を受け取った時
         socket.on('coords_reset', () => {
             clearScreenFull();
             alert("操作者によりすべてのデータが全リセットされました。");
@@ -360,46 +362,35 @@
             groups.forEach(g => container.appendChild(g));
         }
 
-        // ==========================================
-        // ★新規追加: 3種類のリセット機能の制御
-        // ==========================================
-
-        // 1. 全リセット（上部）
         function fullReset() {
             if (userRole !== 'operator') return;
             if (confirm("記録した座標、追加したV地点、読み込んだCSVなど、\nすべてのデータを完全にリセットしますか？")) {
                 clearScreenFull(); 
-                socket.emit('reset_coords'); // サーバーの記憶も完全に飛ばす
+                socket.emit('reset_coords'); 
             }
         }
 
-        // 2. CSVクリア
-        function csvReset() {
+        // ★変更: ベース・確認用でそれぞれ個別にクリアできるように分離
+        function resetSingleCsv(mode) {
             if (userRole !== 'operator') return;
-            if (confirm("読み込んだベースCSV（青枠線）と確認用CSV（黄色ピン）をクリアしますか？\n（記録中のV地点の座標はそのまま残ります）")) {
-                // 自分自身の画面からCSV要素を消す（processCSVに空データを渡す）
-                processCSV('', 'base', '');
-                processCSV('', 'check', '');
-                
-                // 他の端末にも「空のCSV」として同期をかけて強制クリアさせる
-                socket.emit('sync_csv', { mode: 'base', csvText: '', fileName: '' });
-                socket.emit('sync_csv', { mode: 'check', csvText: '', fileName: '' });
+            const targetName = mode === 'base' ? 'ベースCSV（青枠線）' : '確認用CSV（黄色ピン）';
+            
+            if (confirm(`読み込んだ${targetName}をクリアしますか？\n（現在記録中のV地点の座標はそのまま残ります）`)) {
+                processCSV('', mode, '');
+                socket.emit('sync_csv', { mode: mode, csvText: '', fileName: '' });
             }
         }
 
-        // 3. 座標リセット（下部）
         function coordReset() {
             if (userRole !== 'operator') return;
             if (confirm("記録したV1〜Vnの座標のみをリセットしますか？\n（追加したV地点も消去され、初期状態に戻ります）")) {
                 const idsToRemove = pointIds.filter(id => parseInt(id.substring(1)) > 3);
                 
-                // V4以降は削除して、他の端末にも「DELETED」を送って消させる
                 idsToRemove.forEach(id => {
                      removePointElement(id);
                      socket.emit('update_coords', { targetId: id, coords: 'DELETED' });
                 });
 
-                // V1〜V3は入力内容だけを空にして、他の端末にも空データを送る
                 pointIds.forEach(id => {
                     const el = document.getElementById(`${id}-input`);
                     if (el) {
@@ -412,9 +403,7 @@
             }
         }
 
-        // すべての要素を消去する最強のクリア関数
         function clearScreenFull() {
-            // 座標クリア
             const idsToRemove = pointIds.filter(id => parseInt(id.substring(1)) > 3);
             idsToRemove.forEach(id => removePointElement(id));
             pointIds.forEach(id => {
@@ -422,7 +411,6 @@
                 if (el) { el.value = ''; el.style.backgroundColor = '#f8d7da'; setTimeout(() => { el.style.backgroundColor = '#fafafa'; }, 1000); }
             });
             
-            // CSVクリア
             if(loadedMarkersLayer) loadedMarkersLayer.clearLayers();
             if(checkMarkersLayer) checkMarkersLayer.clearLayers();
             originalCsvLines = null;
@@ -574,10 +562,8 @@
             event.target.value = '';
         }
 
-        // ★変更: 空データ（リセット命令）が来た時に、正しくファイルを消去できるように改修
         function processCSV(csvText, mode, fileName, isManualLoad = true) {
             
-            // csvTextが無い（空文字やnull）場合はクリア処理を行って終了する
             if (!csvText) {
                 if (mode === 'base') {
                     if (loadedMarkersLayer) loadedMarkersLayer.clearLayers();
