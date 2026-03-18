@@ -53,9 +53,16 @@
         .role-vw { background-color: #007bff; }
         
         .file-name-label { font-size: 0.8em; color: #666; margin-top: 5px; padding-left: 2px; flex-grow: 1; word-break: break-all; }
-        
         .csv-container { background-color: #f8f9fa; padding: 15px; border-radius: 5px; border: 1px solid #dee2e6; margin-bottom: 20px; display: flex; gap: 15px; flex-wrap: wrap; }
         .csv-box { background: white; padding: 10px; border-radius: 5px; border: 1px solid #ccc; flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 8px; }
+
+        /* ★追加: 手動モード用のトグルスイッチのスタイル */
+        .switch { position: relative; display: inline-block; width: 44px; height: 24px; margin-right: 10px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #ff9800; }
+        input:checked + .slider:before { transform: translateX(20px); }
     </style>
 </head>
 <body>
@@ -77,8 +84,16 @@
     </div>
 
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-        <h2 style="margin: 0;">現在地の記録 <span id="current-role-disp" style="font-size: 0.6em; color: gray;"></span></h2>
+        <h2 style="margin: 0;">現在地の記録 <span id="current-role-disp" style="font-size: 0.6em;"></span></h2>
         <button class="reset-btn" id="full-reset-btn" onclick="fullReset()">⚠️ 全リセット</button>
+    </div>
+
+    <div id="manual-mode-container" style="display: none; align-items: center; margin-bottom: 15px; background: #fff3cd; padding: 10px; border-radius: 5px; border: 1px solid #ffeeba;">
+        <label class="switch">
+            <input type="checkbox" id="manual-mode-switch" onchange="toggleManualMode()">
+            <span class="slider"></span>
+        </label>
+        <span style="font-weight: bold; color: #856404; font-size: 14px;">手動入力モードを有効にする</span>
     </div>
     
     <div class="status-box">
@@ -127,7 +142,6 @@
     <script>
         let userRole = null; 
         const socket = io(); 
-        const TEST_MODE = 1;
 
         let originalCsvLines = null;
         let originalCsvFileName = null;
@@ -204,6 +218,7 @@
             if (userRole) applyRoleToPoint(id);
         }
 
+        // ★変更: スイッチの状態に応じて手動入力を許可/禁止する処理
         function applyRoleToPoint(id) {
             const recordBtn = document.getElementById(`record-${id}`);
             const inputEl = document.getElementById(`${id}-input`);
@@ -214,7 +229,9 @@
                 recordBtn.disabled = false;
                 recordBtn.innerText = id.toUpperCase();
                 delBtn.style.display = 'inline-block'; 
-                if (TEST_MODE === 1) {
+                
+                const isManual = document.getElementById('manual-mode-switch').checked;
+                if (isManual) {
                     inputEl.removeAttribute('readonly');
                     inputEl.placeholder = `${id.toUpperCase()}の座標 (手動入力可)`;
                 } else {
@@ -228,6 +245,12 @@
                 inputEl.setAttribute('readonly', true);
                 inputEl.placeholder = `${id.toUpperCase()}の座標`;
             }
+        }
+
+        // ★追加: スイッチが切り替わった時にすべての入力枠を更新する
+        function toggleManualMode() {
+            if (userRole !== 'operator') return;
+            pointIds.forEach(id => applyRoleToPoint(id));
         }
 
         function addPoint() {
@@ -261,17 +284,17 @@
             if (group) group.remove();
         }
 
-        // ★変更: 個別のクリアボタンの権限制御を追加
+        // ★変更: 文字色の指定と、手動モードスイッチの表示制御
         function selectRole(role) {
             userRole = role;
             document.getElementById('role-modal').style.display = 'none'; 
             
-            let roleText = role === 'operator' ? '[操作者モード]' : '[閲覧者モード]';
-            if (TEST_MODE === 1) {
-                roleText += ' <span style="color:red; font-weight:bold;">[TEST MODE]</span>';
-            }
+            // 操作者は赤、閲覧者は青
+            let roleText = role === 'operator' ? '<span style="color:red; font-weight:bold;">[操作者モード]</span>' : '<span style="color:blue; font-weight:bold;">[閲覧者モード]</span>';
             document.getElementById('current-role-disp').innerHTML = roleText;
 
+            // 操作者の場合のみ、手動モードのスイッチ枠と追加ボタンを表示
+            document.getElementById('manual-mode-container').style.display = (role === 'operator') ? 'flex' : 'none';
             document.getElementById('add-point-btn').style.display = (role === 'operator') ? 'block' : 'none';
 
             ['full-reset-btn', 'base-reset-btn', 'check-reset-btn', 'coord-reset-btn'].forEach(btnId => {
@@ -289,6 +312,7 @@
                 }
             });
 
+            // 役割に応じて入力欄の状態を更新
             pointIds.forEach(id => applyRoleToPoint(id));
 
             if (role === 'operator') {
@@ -370,7 +394,6 @@
             }
         }
 
-        // ★変更: ベース・確認用でそれぞれ個別にクリアできるように分離
         function resetSingleCsv(mode) {
             if (userRole !== 'operator') return;
             const targetName = mode === 'base' ? 'ベースCSV（青枠線）' : '確認用CSV（黄色ピン）';
