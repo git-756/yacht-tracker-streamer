@@ -52,7 +52,6 @@
         .role-op { background-color: #dc3545; }
         .role-vw { background-color: #007bff; }
         
-        /* ★追加: ファイル名表示用のスタイル */
         .file-name-label { font-size: 0.75em; color: #666; margin-top: 5px; padding-left: 2px; }
     </style>
 </head>
@@ -96,9 +95,7 @@
     </div>
 
     <div id="map"></div>
-
     <div id="input-container"></div>
-
     <button class="add-btn" id="add-point-btn" onclick="addPoint()" style="display: none;">➕ 測定地点を追加</button>
 
     <div class="action-container">
@@ -121,7 +118,6 @@
 
         let originalCsvLines = null;
         let originalCsvFileName = null;
-
         let pointIds = ['v1', 'v2', 'v3'];
 
         const yellowIcon = new L.Icon({
@@ -133,23 +129,38 @@
             shadowSize: [41, 41]
         });
 
-        // ★追加: ページ読み込み時にローカルストレージからCSVデータを復元する
         document.addEventListener('DOMContentLoaded', () => {
             initPoints();
-            
-            // ベースCSVの復元
-            const savedBaseText = localStorage.getItem('baseCsvText');
-            const savedBaseName = localStorage.getItem('baseCsvName');
-            if (savedBaseText && savedBaseName) {
-                processCSV(savedBaseText, 'base', savedBaseName);
+        });
+
+        // ==========================================
+        // ★追加: サーバーから初期CSVデータを受け取る
+        // ==========================================
+        socket.on('init_csv', (data) => {
+            let hasServerBase = !!(data.base && data.base.text);
+            let hasServerCheck = !!(data.check && data.check.text);
+
+            if (hasServerBase) {
+                processCSV(data.base.text, 'base', data.base.name, false);
+            } else {
+                // サーバーが空っぽの場合はローカルの記憶から復元
+                const savedBaseText = localStorage.getItem('baseCsvText');
+                const savedBaseName = localStorage.getItem('baseCsvName');
+                if (savedBaseText && savedBaseName) processCSV(savedBaseText, 'base', savedBaseName, false);
             }
-            
-            // 確認用CSVの復元
-            const savedCheckText = localStorage.getItem('checkCsvText');
-            const savedCheckName = localStorage.getItem('checkCsvName');
-            if (savedCheckText && savedCheckName) {
-                processCSV(savedCheckText, 'check', savedCheckName);
+
+            if (hasServerCheck) {
+                processCSV(data.check.text, 'check', data.check.name, false);
+            } else {
+                const savedCheckText = localStorage.getItem('checkCsvText');
+                const savedCheckName = localStorage.getItem('checkCsvName');
+                if (savedCheckText && savedCheckName) processCSV(savedCheckText, 'check', savedCheckName, false);
             }
+        });
+
+        // ★追加: 他の人がCSVをアップロードしたときに受信して画面を更新する
+        socket.on('csv_synced', (data) => {
+            processCSV(data.csvText, data.mode, data.fileName, false);
         });
 
         function initPoints() {
@@ -265,6 +276,31 @@
                 }
             }
             pointIds.forEach(id => applyRoleToPoint(id));
+
+            // ==========================================
+            // ★追加: サーバー再起動時の自己修復システム
+            // もし操作者として参加した時、自分のブラウザに過去のCSVの記憶が残っていれば
+            // それをサーバーに送り返して全体を完全復旧させる
+            // ==========================================
+            if (role === 'operator') {
+                const baseText = localStorage.getItem('baseCsvText');
+                const baseName = localStorage.getItem('baseCsvName');
+                if (baseText && baseName) {
+                    socket.emit('sync_csv', { mode: 'base', csvText: baseText, fileName: baseName });
+                }
+                const checkText = localStorage.getItem('checkCsvText');
+                const checkName = localStorage.getItem('checkCsvName');
+                if (checkText && checkName) {
+                    socket.emit('sync_csv', { mode: 'check', csvText: checkText, fileName: checkName });
+                }
+                // 入力済みのV座標も復旧させる
+                pointIds.forEach(id => {
+                    const el = document.getElementById(`${id}-input`);
+                    if (el && el.value) {
+                        socket.emit('update_coords', { targetId: id, coords: el.value });
+                    }
+                });
+            }
         }
 
         socket.on('init_coords', (data) => updateFieldsFromSocket(data));
@@ -328,7 +364,6 @@
             }
         }
 
-        // ★変更: リセット時にローカルストレージ（保存したCSV）も綺麗に削除する
         function clearScreen() {
             const idsToRemove = pointIds.filter(id => parseInt(id.substring(1)) > 3);
             idsToRemove.forEach(id => removePointElement(id));
@@ -347,7 +382,6 @@
             originalCsvLines = null;
             originalCsvFileName = null;
 
-            // ローカルストレージとファイル名表示をクリア
             localStorage.removeItem('baseCsvText');
             localStorage.removeItem('baseCsvName');
             localStorage.removeItem('checkCsvText');
@@ -478,19 +512,29 @@
             document.body.removeChild(link);
         }
 
-        // ★変更: 読み込んだ内容をローカルストレージに保存する処理を追加
+        // ==========================================
+        // ★追加: CSVを読み込んだ際、操作者なら他の人に配る
+        // ==========================================
         function loadFromCSV(event, mode) {
             const file = event.target.files[0];
             if (!file) return;
             const fileName = file.name;
             
             const reader = new FileReader();
-            reader.onload = (e) => processCSV(e.target.result, mode, fileName);
+            reader.onload = (e) => {
+                const csvText = e.target.result;
+                processCSV(csvText, mode, fileName, true);
+
+                // 自分が操作者の場合のみ、読み込んだCSVを全員に同期する
+                if (userRole === 'operator') {
+                    socket.emit('sync_csv', { mode: mode, csvText: csvText, fileName: fileName });
+                }
+            };
             reader.readAsText(file);
             event.target.value = '';
         }
 
-        function processCSV(csvText, mode, fileName) {
+        function processCSV(csvText, mode, fileName, isManualLoad = true) {
             const lines = csvText.split(/\r?\n/);
             let bounds = [];
             
@@ -499,7 +543,6 @@
                 originalCsvLines = lines; 
                 originalCsvFileName = fileName;
                 
-                // ストレージと画面にファイル名を記憶
                 localStorage.setItem('baseCsvText', csvText);
                 localStorage.setItem('baseCsvName', fileName);
                 document.getElementById('base-csv-name').innerText = fileName;
@@ -526,7 +569,6 @@
             } else if (mode === 'check') {
                 checkMarkersLayer.clearLayers();
                 
-                // ストレージと画面にファイル名を記憶
                 localStorage.setItem('checkCsvText', csvText);
                 localStorage.setItem('checkCsvName', fileName);
                 document.getElementById('check-csv-name').innerText = fileName;

@@ -4,40 +4,53 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-// 1. 証明書の読み込み（一つ上の階層の certs フォルダから読み込む）
 const options = {
     key: fs.readFileSync(path.join(__dirname, '../certs/server.key')),
     cert: fs.readFileSync(path.join(__dirname, '../certs/server.crt'))
 };
 
-// 2. HTTPSサーバーの作成
 const server = https.createServer(options, app);
 const io = require('socket.io')(server);
 
-// 3. 画面のファイル（HTML等）は public フォルダから配信する設定
 app.use(express.static(path.join(__dirname, 'public')));
 
 // --- 現在地記録アプリ用のデータ（メモリ保存） ---
 let latestCoords = { v1: '', v2: '', v3: '', v4: '' };
+// ★追加: CSVデータをサーバー側でも記憶しておく変数
+let latestBaseCsv = { text: null, name: null };
+let latestCheckCsv = { text: null, name: null };
 
-// --- クライアント接続時の処理（Socket.IO） ---
 io.on('connection', (socket) => {
     console.log('ユーザーが接続しました ID:', socket.id);
 
     // 新規接続時に現在の状態を送る
     socket.emit('init_coords', latestCoords);
+    // ★追加: あとから参加した人に最新のCSVを配る
+    socket.emit('init_csv', { base: latestBaseCsv, check: latestCheckCsv });
 
-    // 座標更新を受け取った時
     socket.on('update_coords', (data) => {
         console.log(`【位置情報】座標更新を受信: ${data.targetId} -> ${data.coords}`);
         latestCoords[data.targetId] = data.coords;
-        socket.broadcast.emit('coords_updated', data); // 他の全員に転送
+        socket.broadcast.emit('coords_updated', data); 
     });
 
-    // リセットを受け取った時
+    // ★追加: 誰かがCSVをアップロードした時、受け取って全員に配る
+    socket.on('sync_csv', (data) => {
+        console.log(`【CSV同期】モード: ${data.mode}, ファイル名: ${data.fileName}`);
+        if (data.mode === 'base') {
+            latestBaseCsv = { text: data.csvText, name: data.fileName };
+        } else if (data.mode === 'check') {
+            latestCheckCsv = { text: data.csvText, name: data.fileName };
+        }
+        socket.broadcast.emit('csv_synced', data);
+    });
+
     socket.on('reset_coords', () => {
         console.log("【位置情報】リセットを受信しました");
-        latestCoords = { v1: '', v2: '', v3: '', v4: '' };
+        latestCoords = {};
+        // ★追加: サーバー側のCSV記憶も消去する
+        latestBaseCsv = { text: null, name: null };
+        latestCheckCsv = { text: null, name: null };
         socket.broadcast.emit('coords_reset');
     });
 
@@ -46,7 +59,6 @@ io.on('connection', (socket) => {
     });
 });
 
-// 4. サーバーの起動
 const PORT = 3000;
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`HTTPSサーバーが起動しました: https://localhost:${PORT}/portal.html`);
