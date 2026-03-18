@@ -35,6 +35,14 @@
         </label>
         <span style="font-weight: bold; color: #856404; font-size: 14px;">手動入力モードを有効にする</span>
     </div>
+
+    <div style="display: flex; align-items: center; margin-bottom: 15px; background: #e2f3f5; padding: 10px; border-radius: 5px; border: 1px solid #b8daff;">
+        <label class="switch">
+            <input type="checkbox" id="location-mode-switch" onchange="toggleLocationMode()">
+            <span class="slider"></span>
+        </label>
+        <span style="font-weight: bold; color: #004085; font-size: 14px;">📍 現在地を地図に表示 (1時間で自動OFF)</span>
+    </div>
     
     <div class="status-box">
         <strong>現在のステータス:</strong> <span id="status">位置情報を取得中...</span><br>
@@ -74,6 +82,7 @@
     <div class="disclaimer">
         <strong>※注意事項（利用について）</strong><br>
         本ツールは位置情報収集・共有ツールです。取得した位置情報は本画面での座標記録目的のみに使用され、バックグラウンドでの監視等は行いません。関係者以外の利用はお控えください。
+
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
