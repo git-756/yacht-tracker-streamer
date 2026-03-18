@@ -18,6 +18,19 @@
         input[type="text"] { flex-grow: 1; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; background-color: #fafafa; margin-right: 10px; transition: background-color 0.5s; }
         .copy-btn { padding: 10px 15px; font-size: 14px; cursor: pointer; background-color: #6c757d; color: white; border: none; border-radius: 5px; }
         .copy-btn:hover { background-color: #5a6268; }
+        
+        /* ★追加・変更: ゴミ箱ボタンと追加ボタンのスタイル */
+        .delete-btn {
+            background-color: #dc3545; color: white; border: none; border-radius: 5px; padding: 10px 15px; cursor: pointer; font-size: 14px;
+            transition: background-color 0.2s; margin-left: 5px;
+        }
+        .delete-btn:hover { background-color: #c82333; }
+        .add-btn {
+            padding: 10px 20px; font-size: 15px; background-color: #ff9800; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: background-color 0.2s; width: 100%; margin-bottom: 20px;
+        }
+        .add-btn:hover { background-color: #e68a00; }
+
         .action-container { display: flex; justify-content: space-between; margin-bottom: 20px; padding-top: 20px; border-top: 1px solid #ccc; }
         .save-btn { padding: 10px 15px; background-color: #28a745; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; }
         .save-btn:hover { background-color: #218838; }
@@ -75,29 +88,9 @@
 
     <div id="map"></div>
 
-    <div class="input-group">
-        <button class="record-btn" onclick="recordLocation('v1')">V1</button>
-        <input type="text" id="v1-input" readonly placeholder="V1の座標">
-        <button class="copy-btn" onclick="copyToClipboard('v1-input')">コピー</button>
-    </div>
+    <div id="input-container"></div>
 
-    <div class="input-group">
-        <button class="record-btn" onclick="recordLocation('v2')">V2</button>
-        <input type="text" id="v2-input" readonly placeholder="V2の座標">
-        <button class="copy-btn" onclick="copyToClipboard('v2-input')">コピー</button>
-    </div>
-
-    <div class="input-group">
-        <button class="record-btn" onclick="recordLocation('v3')">V3</button>
-        <input type="text" id="v3-input" readonly placeholder="V3の座標">
-        <button class="copy-btn" onclick="copyToClipboard('v3-input')">コピー</button>
-    </div>
-
-    <div class="input-group">
-        <button class="record-btn" onclick="recordLocation('v4')">V4</button>
-        <input type="text" id="v4-input" readonly placeholder="V4の座標">
-        <button class="copy-btn" onclick="copyToClipboard('v4-input')">コピー</button>
-    </div>
+    <button class="add-btn" id="add-point-btn" onclick="addPoint()" style="display: none;">➕ 測定地点を追加</button>
 
     <div class="action-container">
         <button class="save-btn" onclick="saveToCSV()">💾 確定 (CSV保存)</button>
@@ -115,13 +108,14 @@
     <script>
         let userRole = null; 
         const socket = io(); 
-
         const TEST_MODE = 1;
 
         let originalCsvLines = null;
         let originalCsvFileName = null;
 
-        // ★追加: 確認用ピンのカスタムアイコン（イエロー）
+        // ★追加: 現在表示されている入力枠のIDを管理するリスト (初期状態はV1〜V3)
+        let pointIds = ['v1', 'v2', 'v3'];
+
         const yellowIcon = new L.Icon({
             iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-yellow.png',
             shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -131,6 +125,117 @@
             shadowSize: [41, 41]
         });
 
+        // ページ読み込み時に初期の入力枠(V1〜V3)を生成
+        document.addEventListener('DOMContentLoaded', () => {
+            initPoints();
+        });
+
+        function initPoints() {
+            const container = document.getElementById('input-container');
+            container.innerHTML = '';
+            pointIds.forEach(id => createPointElement(id));
+        }
+
+        // --- ★追加: 動的に入力枠を生成する関数 ---
+        function createPointElement(id) {
+            const container = document.getElementById('input-container');
+            if (document.getElementById(`group-${id}`)) return; // 既に存在する場合は無視
+
+            const upperId = id.toUpperCase();
+            const group = document.createElement('div');
+            group.className = 'input-group';
+            group.id = `group-${id}`;
+
+            // HTMLの骨組みを生成
+            group.innerHTML = `
+                <button class="record-btn" id="record-${id}" onclick="recordLocation('${id}')">${upperId}</button>
+                <input type="text" id="${id}-input" readonly placeholder="${upperId}の座標">
+                <button class="copy-btn" onclick="copyToClipboard('${id}-input')">コピー</button>
+                <button class="delete-btn" id="del-${id}" onclick="deletePoint('${id}')" style="display: none;">🗑️</button>
+            `;
+            container.appendChild(group);
+
+            // 手動入力された際のサーバー送信処理 (テストモード用)
+            const inputEl = document.getElementById(`${id}-input`);
+            inputEl.addEventListener('change', (e) => {
+                if (userRole === 'operator') {
+                    socket.emit('update_coords', { targetId: id, coords: e.target.value });
+                }
+            });
+            
+            // 現在のロールに合わせて見た目を整える
+            if (userRole) applyRoleToPoint(id);
+        }
+
+        // --- ★追加: 各入力枠の表示/非表示や読み取り専用を制御する関数 ---
+        function applyRoleToPoint(id) {
+            const recordBtn = document.getElementById(`record-${id}`);
+            const inputEl = document.getElementById(`${id}-input`);
+            const delBtn = document.getElementById(`del-${id}`);
+            if (!recordBtn || !inputEl || !delBtn) return;
+
+            if (userRole === 'operator') {
+                recordBtn.disabled = false;
+                recordBtn.innerText = id.toUpperCase();
+                delBtn.style.display = 'inline-block'; // ゴミ箱を表示
+                if (TEST_MODE === 1) {
+                    inputEl.removeAttribute('readonly');
+                    inputEl.placeholder = `${id.toUpperCase()}の座標 (手動入力可)`;
+                } else {
+                    inputEl.setAttribute('readonly', true);
+                    inputEl.placeholder = `${id.toUpperCase()}の座標`;
+                }
+            } else if (userRole === 'viewer') {
+                recordBtn.disabled = true;
+                recordBtn.innerText = '操作不可';
+                delBtn.style.display = 'none'; // 閲覧者にはゴミ箱を見せない
+                inputEl.setAttribute('readonly', true);
+                inputEl.placeholder = `${id.toUpperCase()}の座標`;
+            }
+        }
+
+        // --- ★追加: 新しい入力枠を追加する関数 ---
+        function addPoint() {
+            if (userRole !== 'operator') return;
+            
+            // 現在の番号の最大値を調べ、+1した番号を生成
+            let maxNum = 0;
+            pointIds.forEach(id => {
+                const num = parseInt(id.substring(1));
+                if (num > maxNum) maxNum = num;
+            });
+            
+            const newId = `v${maxNum + 1}`;
+            pointIds.push(newId);
+            createPointElement(newId);
+        }
+
+        // --- ★追加: 入力枠を削除する関数 ---
+        function deletePoint(id) {
+            if (userRole !== 'operator') return;
+            
+            if (pointIds.length <= 1) {
+                alert("少なくとも1つの地点は残す必要があります。");
+                return;
+            }
+            
+            if (confirm(`${id.toUpperCase()} を削除しますか？\n（入力されている座標も消去されます）`)) {
+                removePointElement(id);
+                // 他の閲覧者の画面からも消すために「DELETED」という合図を送る
+                socket.emit('update_coords', { targetId: id, coords: 'DELETED' });
+            }
+        }
+
+        // 画面上から入力枠を消し去る処理
+        function removePointElement(id) {
+            const index = pointIds.indexOf(id);
+            if (index > -1) pointIds.splice(index, 1);
+            
+            const group = document.getElementById(`group-${id}`);
+            if (group) group.remove();
+        }
+
+        // --- ★変更: ロール選択時の処理 (追加ボタンの表示制御など) ---
         function selectRole(role) {
             userRole = role;
             document.getElementById('role-modal').style.display = 'none'; 
@@ -141,42 +246,25 @@
             }
             document.getElementById('current-role-disp').innerHTML = roleText;
 
-            if (role === 'viewer') {
-                const btns = document.querySelectorAll('.record-btn');
-                btns.forEach(btn => {
-                    btn.disabled = true;
-                    btn.innerText = '操作不可';
-                });
-                
-                const resetBtn = document.getElementById('reset-btn');
-                if(resetBtn) {
+            // 操作者のみ「追加ボタン」を表示
+            document.getElementById('add-point-btn').style.display = (role === 'operator') ? 'block' : 'none';
+
+            const resetBtn = document.getElementById('reset-btn');
+            if(resetBtn) {
+                if (role === 'viewer') {
                     resetBtn.disabled = true;
                     resetBtn.innerText = '操作不可';
+                } else {
+                    resetBtn.disabled = false;
+                    resetBtn.innerText = '🗑️ リセット';
                 }
-
-                ['v1', 'v2', 'v3', 'v4'].forEach(id => {
-                    const inputEl = document.getElementById(`${id}-input`);
-                    if(inputEl) inputEl.setAttribute('readonly', true);
-                });
             }
+
+            // 既存のすべての枠にロールを適用
+            pointIds.forEach(id => applyRoleToPoint(id));
         }
 
-        if (TEST_MODE === 1) {
-            ['v1', 'v2', 'v3', 'v4'].forEach(id => {
-                const inputEl = document.getElementById(`${id}-input`);
-                if (inputEl) {
-                    inputEl.removeAttribute('readonly'); 
-                    inputEl.placeholder = `${id.toUpperCase()}の座標 (手動入力可)`;
-                    
-                    inputEl.addEventListener('change', (e) => {
-                        if (userRole === 'operator') {
-                            socket.emit('update_coords', { targetId: id, coords: e.target.value });
-                        }
-                    });
-                }
-            });
-        }
-
+        // --- ★変更: ソケット受信時の処理 (追加と削除の同期) ---
         socket.on('init_coords', (data) => updateFieldsFromSocket(data));
         socket.on('coords_updated', (data) => {
             const tempObj = {};
@@ -191,20 +279,53 @@
 
         function updateFieldsFromSocket(data) {
             for (const [key, val] of Object.entries(data)) {
-                if (val !== undefined && val !== "") {
+                // 削除指令を受信した場合
+                if (val === 'DELETED') {
+                    removePointElement(key);
+                    continue;
+                }
+                
+                // 値が入っている場合 (新規追加されたものも含む)
+                if (val !== undefined && val !== null && val !== '') {
+                    // 自分の画面にその枠がまだ無ければ、自動で作って追加する
+                    if (!pointIds.includes(key)) {
+                        pointIds.push(key);
+                        createPointElement(key);
+                        sortPointElements(); // V1, V2の順番が崩れないように並び替える
+                    }
+                    
                     const inputField = document.getElementById(`${key}-input`);
                     if (inputField && inputField.value !== val) {
                         inputField.value = val;
                         inputField.style.backgroundColor = '#d4edda';
                         setTimeout(() => { inputField.style.backgroundColor = '#fafafa'; }, 1000);
                     }
+                } 
+                // 値が空になった場合 (リセットや手動クリア時)
+                else if (val === '') {
+                    const inputField = document.getElementById(`${key}-input`);
+                    if (inputField && inputField.value !== val) {
+                        inputField.value = val;
+                    }
                 }
             }
         }
 
+        // 枠の表示順を V1, V2, V3... と数字順に綺麗に並び替える
+        function sortPointElements() {
+            const container = document.getElementById('input-container');
+            const groups = Array.from(container.children);
+            groups.sort((a, b) => {
+                const numA = parseInt(a.id.replace('group-v', ''));
+                const numB = parseInt(b.id.replace('group-v', ''));
+                return numA - numB;
+            });
+            groups.forEach(g => container.appendChild(g));
+        }
+
         function resetData() {
             if (userRole !== 'operator') return;
-            const isConfirmed = confirm("記録したV1〜V4の座標と地図のピンをすべてリセットしますか？\n（閲覧者の画面も同時にリセットされます）");
+            const isConfirmed = confirm("記録した座標と地図のピンをすべてリセットしますか？\n（追加したV地点も初期状態に戻ります）");
             
             if (isConfirmed) {
                 clearScreen(); 
@@ -212,8 +333,14 @@
             }
         }
 
+        // --- ★変更: リセット時に初期のV1〜V3状態に戻す ---
         function clearScreen() {
-            ['v1', 'v2', 'v3', 'v4'].forEach(id => {
+            // V4以降の追加された枠は完全に削除する
+            const idsToRemove = pointIds.filter(id => parseInt(id.substring(1)) > 3);
+            idsToRemove.forEach(id => removePointElement(id));
+
+            // V1〜V3は残して中身だけ空にする
+            pointIds.forEach(id => {
                 const el = document.getElementById(`${id}-input`);
                 if (el) {
                     el.value = '';
@@ -222,7 +349,7 @@
                 }
             });
             if(loadedMarkersLayer) loadedMarkersLayer.clearLayers();
-            if(checkMarkersLayer) checkMarkersLayer.clearLayers(); // 黄色ピンも消去
+            if(checkMarkersLayer) checkMarkersLayer.clearLayers();
             originalCsvLines = null;
             originalCsvFileName = null;
         }
@@ -236,8 +363,8 @@
         L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
         let currentMarker = null;
-        let loadedMarkersLayer = L.layerGroup().addTo(map); // ベース(青線)用レイヤー
-        let checkMarkersLayer = L.layerGroup().addTo(map);  // 確認用(黄色ピン)用レイヤー
+        let loadedMarkersLayer = L.layerGroup().addTo(map);
+        let checkMarkersLayer = L.layerGroup().addTo(map);
 
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(
@@ -271,7 +398,6 @@
                 const inputField = document.getElementById(`${targetId}-input`);
                 const coordsStr = `${currentLat}, ${currentLng}`;
                 inputField.value = coordsStr;
-
                 socket.emit('update_coords', { targetId: targetId, coords: coordsStr });
             } else {
                 alert("現在地をまだ取得できていません。少し待ってから再度お試しください。");
@@ -284,8 +410,12 @@
             navigator.clipboard.writeText(copyText).then(() => alert("コピーしました: " + copyText)).catch(err => console.error(err));
         }
 
+        // --- ★変更: 保存時に「現在画面に存在する数だけ」処理するよう対応 ---
         function saveToCSV() {
-            const vVals = ['v1', 'v2', 'v3', 'v4'].map(id => document.getElementById(`${id}-input`).value);
+            // 現在の枠をV1, V2, V3... の順に並び替えてから値を取得
+            const sortedIds = [...pointIds].sort((a, b) => parseInt(a.substring(1)) - parseInt(b.substring(1)));
+            const vVals = sortedIds.map(id => document.getElementById(`${id}-input`).value);
+            
             let finalCsvContent = "";
             
             if (originalCsvLines && originalCsvLines.length > 0) {
@@ -296,17 +426,23 @@
                     let line = originalCsvLines[i];
                     
                     if (line.startsWith('way,')) {
-                        if (wayIndex < 4) {
+                        // 画面の入力枠の数だけテンプレートのway行を上書きする
+                        if (wayIndex < vVals.length) {
                             const val = vVals[wayIndex];
                             const commaCount = (line.match(/,/g) || []).length;
                             const trailingCommas = ",".repeat(Math.max(0, commaCount - 2));
                             
-                            if (val) {
+                            if (val && val !== '') {
                                 const coords = val.split(', ');
                                 line = `way,${coords[0]},${coords[1]}${trailingCommas}`;
                             } else {
                                 line = `way,,${trailingCommas}`; 
                             }
+                        } else {
+                            // 画面の入力枠よりテンプレートのway行が多い場合は空欄にしておく
+                            const commaCount = (line.match(/,/g) || []).length;
+                            const trailingCommas = ",".repeat(Math.max(0, commaCount - 2));
+                            line = `way,,${trailingCommas}`; 
                         }
                         wayIndex++;
                     }
@@ -315,9 +451,10 @@
                 finalCsvContent = newLines.join('\n');
             } else {
                 finalCsvContent = "Point,Latitude,Longitude\n";
-                vVals.forEach((val, i) => {
-                    const name = `V${i+1}`;
-                    if (val) {
+                sortedIds.forEach((id) => {
+                    const val = document.getElementById(`${id}-input`).value;
+                    const name = id.toUpperCase();
+                    if (val && val !== '') {
                         const parts = val.split(', ');
                         finalCsvContent += `${name},${parts[0]},${parts[1]}\n`;
                     } else {
@@ -334,7 +471,6 @@
             const fileName = prompt("保存するファイル名を入力してください", defaultName);
             
             if (!fileName) return; 
-            
             const finalFileName = fileName.endsWith('.csv') ? fileName : fileName + '.csv';
 
             const blob = new Blob([finalCsvContent], { type: 'text/csv;charset=utf-8;' });
@@ -346,15 +482,11 @@
             document.body.removeChild(link);
         }
 
-        // ★変更: 2種類の読み込みモードに対応
+        // CSV読み込み (ベース/確認用 の切り替え)
         function loadFromCSV(event, mode) {
             const file = event.target.files[0];
             if (!file) return;
-            
-            // ベース読み込みの時だけファイル名とテンプレ情報を記憶する
-            if (mode === 'base') {
-                originalCsvFileName = file.name; 
-            }
+            if (mode === 'base') originalCsvFileName = file.name; 
             
             const reader = new FileReader();
             reader.onload = (e) => processCSV(e.target.result, mode);
@@ -368,7 +500,7 @@
             
             if (mode === 'base') {
                 loadedMarkersLayer.clearLayers();
-                originalCsvLines = lines; // 保存テンプレ用に保持
+                originalCsvLines = lines; 
                 let edgePoints = [];
                 
                 for (let i = 0; i < lines.length; i++) {
@@ -384,9 +516,7 @@
                             bounds.push([lat, lng]);
                         }
                     }
-                    // baseモードでは way 行を無視し、入力欄の上書きを行わない
                 }
-                
                 if (edgePoints.length > 0) {
                     L.polyline(edgePoints, {color: '#007bff', weight: 3, opacity: 0.6}).addTo(loadedMarkersLayer);
                 }
@@ -400,11 +530,10 @@
                     if (!line) continue;
                     const parts = line.split(',');
                     
-                    if (parts[0] === 'way' && wayIndex <= 4) {
+                    if (parts[0] === 'way') {
                         const lat = parseFloat(parts[1]);
                         const lng = parseFloat(parts[2]);
                         if (!isNaN(lat) && !isNaN(lng)) {
-                            // 地図上に黄色のピンを立てる（入力欄は上書きしない）
                             const marker = L.marker([lat, lng], {icon: yellowIcon}).bindPopup(`<b>確認用: V${wayIndex}</b>`);
                             checkMarkersLayer.addLayer(marker);
                             bounds.push([lat, lng]);
