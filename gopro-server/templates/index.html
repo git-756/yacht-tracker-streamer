@@ -5,12 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Polaris Monitoring from Tug</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <script async src="{{ url_for('static', filename='js/opencv.js') }}" onload="onOpenCvReady();" type="text/javascript"></script>
     <style>
-        /* 戻るボタン用のスタイル */
         .back-btn-container {
             text-align: left;
             margin-bottom: 15px;
+            padding: 20px;
         }
         .back-btn {
             display: inline-block;
@@ -43,18 +42,13 @@
 
     <h2>Polaris Monitoring from Tug</h2>
     
-    <div class="controls">
-        <button id="toggleBtn" class="btn-on">手振れ補正: ON</button>
+    <div class="video-container">
+        <!-- ブラウザ標準機能で直接ストリームを描画します -->
+        <img id="videoStream" src="{{ url_for('video_feed') }}" crossorigin="anonymous" alt="カメラ映像を受信中...">
     </div>
     
-    <div class="video-container">
-        <img id="rawVideo" src="/video_feed" style="position: absolute; opacity: 0; pointer-events: none;">
-        
-        <canvas id="outputCanvas" width="1280" height="720"></canvas>
-    </div>
-
-    <div id="status">OpenCV.js を初期化中（WebAssembly展開中）...</div>
-
+    <p id="status">映像ストリームに接続中...</p>
+    
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

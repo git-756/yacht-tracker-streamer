@@ -14,7 +14,6 @@ const yellowIcon = new L.Icon({
     shadowSize: [41, 41]
 });
 
-// ★変更: V地点用のピンを「赤色」に変更
 const redIcon = new L.Icon({
     iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
     shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -28,7 +27,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('back-to-portal').href = `https://${window.location.hostname}:3000/portal.html`;
     initPoints();
     
-    // ★追加: 画面を開いた時はGPSが止まっていることを明記
     document.getElementById('status').innerText = "追跡停止中 (OFF)";
     document.getElementById('status').style.color = "gray";
 });
@@ -277,9 +275,8 @@ function resetSingleCsv(mode) {
     
     if (confirm(`読み込んだ${targetName}をクリアしますか？\n（現在記録中のV地点の座標はそのまま残ります）`)) {
         processCSV('', mode, '');
-        if (userRole === 'operator') {
-            socket.emit('sync_csv', { mode: mode, csvText: '', fileName: '' });
-        }
+        // ★変更箇所：役割に関わらず、クリアした情報を他端末に同期する
+        socket.emit('sync_csv', { mode: mode, csvText: '', fileName: '' });
     }
 }
 
@@ -342,7 +339,6 @@ let loadedMarkersLayer = L.layerGroup().addTo(map);
 let checkMarkersLayer = L.layerGroup().addTo(map);
 let vMarkersLayer = L.layerGroup().addTo(map);
 
-// ★変更: redIconを使うように修正
 function updateVPins() {
     vMarkersLayer.clearLayers(); 
     
@@ -361,9 +357,6 @@ function updateVPins() {
     });
 }
 
-// ==========================================
-// ★追加: GPSの負荷軽減と1時間タイマーロジック
-// ==========================================
 let watchId = null;
 let locationTimer = null;
 let lastUpdate = 0;
@@ -372,7 +365,6 @@ function toggleLocationMode() {
     const isEnabled = document.getElementById('location-mode-switch').checked;
     if (isEnabled) {
         startLocationTracking();
-        // 1時間 (3600000ミリ秒) 後に自動でオフにする
         locationTimer = setTimeout(() => {
             document.getElementById('location-mode-switch').checked = false;
             stopLocationTracking();
@@ -397,7 +389,6 @@ function startLocationTracking() {
         watchId = navigator.geolocation.watchPosition(
             (position) => {
                 const now = Date.now();
-                // 負荷対策1: 3秒に1回だけ処理を通す (スロットリング)
                 if (now - lastUpdate < 3000) return;
                 lastUpdate = now;
 
@@ -411,7 +402,6 @@ function startLocationTracking() {
                 if (currentMarker) {
                     currentMarker.setLatLng(newLatLng);
                 } else {
-                    // 負荷対策2: 軽量な青い丸アイコン (circleMarker) を描画
                     currentMarker = L.circleMarker(newLatLng, {
                         radius: 8,
                         fillColor: "#007bff",
@@ -452,11 +442,9 @@ function stopLocationTracking() {
     currentLng = null;
 }
 
-// ★変更: スイッチがOFFの場合でも、Vボタンを押した瞬間だけ単発でGPSを取得する最強のUX
 function recordLocation(targetId) {
     if (userRole !== 'operator') return;
 
-    // 現在地追跡がONで、すでに座標がある場合は即座に記録
     if (currentLat !== null && currentLng !== null) {
         const inputField = document.getElementById(`${targetId}-input`);
         const coordsStr = `${currentLat}, ${currentLng}`;
@@ -464,7 +452,6 @@ function recordLocation(targetId) {
         socket.emit('update_coords', { targetId: targetId, coords: coordsStr });
         updateVPins();
     } else {
-        // 現在地追跡がOFFの場合は、その場の一回だけ単発でGPSを取得する
         statusEl.innerText = "単発でGPSを取得中...";
         statusEl.style.color = "orange";
         
@@ -482,7 +469,6 @@ function recordLocation(targetId) {
                 statusEl.innerText = "記録完了";
                 statusEl.style.color = "green";
                 
-                // 2秒後に元のOFF表示に戻す
                 setTimeout(() => {
                     const isEnabled = document.getElementById('location-mode-switch').checked;
                     if (!isEnabled) {
@@ -582,16 +568,14 @@ function loadFromCSV(event, mode) {
         const csvText = e.target.result;
         processCSV(csvText, mode, fileName, true);
 
-        if (userRole === 'operator') {
-            socket.emit('sync_csv', { mode: mode, csvText: csvText, fileName: fileName });
-        }
+        // ★変更箇所：閲覧者・操作者に関わらず、CSVを読み込んだら全体に同期を指示する
+        socket.emit('sync_csv', { mode: mode, csvText: csvText, fileName: fileName });
     };
     reader.readAsText(file);
     event.target.value = '';
 }
 
 function processCSV(csvText, mode, fileName, isManualLoad = true) {
-    
     if (!csvText) {
         if (mode === 'base') {
             if (loadedMarkersLayer) loadedMarkersLayer.clearLayers();

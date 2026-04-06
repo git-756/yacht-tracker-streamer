@@ -3,56 +3,33 @@ body {
     color: white;
     font-family: sans-serif;
     text-align: center;
-    padding-top: 20px;
+    padding-top: 0;
     margin: 0;
 }
 
 h2 {
-    margin-bottom: 10px;
-}
-
-.controls {
-    margin-bottom: 15px;
-}
-
-/* ボタンのデザイン */
-button {
-    padding: 10px 20px;
-    font-size: 16px;
-    font-weight: bold;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background-color 0.3s;
-}
-
-.btn-on {
-    background-color: #00ff88;
-    color: #000;
-}
-
-.btn-off {
-    background-color: #555;
-    color: #fff;
+    margin-bottom: 20px;
 }
 
 .video-container {
     margin: 0 auto;
-    width: 80%;
+    width: 90%;
     max-width: 1280px;
     position: relative;
 }
 
-#outputCanvas {
+/* 映像のスタイル */
+#videoStream {
     width: 100%;
     height: auto;
     border: 2px solid #555;
     border-radius: 8px;
     background-color: #000;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
 }
 
 #status {
     margin-top: 15px;
-    color: #00ff88;
     font-weight: bold;
+    color: #ccc;
 }
